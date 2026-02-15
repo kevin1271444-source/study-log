@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习日志 Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        /* --- 1. 全局配置 --- */
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.6);
+            --primary: #6c5ce7;
+            --text-main: #2d3436;
+            --text-sub: #636e72;
+        }
+        
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            margin: 0; padding: 0;
+            background-image: url('bg.jpg'); /* 请确保图片名为 bg.jpg */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text-main);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; box-sizing: border-box; }
+
+        /* --- Header --- */
+        .header {
+            background: var(--glass-bg); backdrop-filter: blur(10px);
+            border-radius: 16px; padding: 15px 30px;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        }
+        .app-title { font-size: 24px; font-weight: 800; color: var(--primary); letter-spacing: 1px; }
+        .clock { font-size: 20px; font-family: 'Courier New', monospace; font-weight: bold; }
+
+        /* --- Workspace --- */
+        .workspace {
+            display: grid; grid-template-columns: 1fr 350px; gap: 30px;
+            margin-bottom: 40px; min-height: 70vh; align-items: stretch;
+        }
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            .workspace { grid-template-columns: 1fr; height: auto; }
+            .stats-section { grid-template-columns: 1fr; }
+            .header { flex-direction: column; gap: 10px; }
+        }
+
+        .main-panel {
+            background: var(--glass-bg); backdrop-filter: blur(12px);
+            border-radius: 20px; padding: 30px; display: flex; flex-direction: column;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1); box-sizing: border-box;
+        }
+        .section-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; color: var(--text-main); }
+
+        .input-wrapper { position: relative; margin-bottom: 20px; }
+        #taskInput {
+            width: 100%; padding: 15px; font-size: 16px; border: 2px solid transparent; border-radius: 12px;
+            background: rgba(255,255,255,0.9); transition: 0.3s; box-shadow: 0 4px 10px rgba(0,0,0,0.05); box-sizing: border-box;
+        }
+        #taskInput:focus { outline: none; border-color: var(--primary); }
+
+        .task-list { flex: 1; overflow-y: auto; padding-right: 5px; }
+        .task-item {
+            background: rgba(255,255,255,0.7); border-radius: 12px; margin-bottom: 10px; padding: 15px;
+            transition: all 0.2s; border-left: 4px solid transparent;
+        }
+        .task-item.done { opacity: 0.6; }
+        .task-item.done .task-title { text-decoration: line-through; color: #999; }
+        .task-item.done .checkbox { background: var(--primary); }
+        .task-item.done .checkbox::after { content: '✔'; color: white; font-size: 14px; }
+
+        .task-header { display: flex; align-items: center; margin-bottom: 8px; }
+        .checkbox {
+            width: 22px; height: 22px; border: 2px solid var(--primary); border-radius: 6px;
+            margin-right: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .task-title { font-size: 16px; font-weight: bold; flex: 1; cursor: pointer; }
+        .delete-btn { color: #ff7675; cursor: pointer; padding: 5px; }
+        .task-note {
+            width: 100%; background: transparent; border: none; resize: none; font-size: 13px; color: var(--text-sub); 
+            padding-left: 38px; font-family: inherit; min-height: 30px; outline: none; overflow: hidden; box-sizing: border-box;
+        }
+
+        /* Sidebar */
+        .sidebar { display: flex; flex-direction: column; gap: 20px; height: 100%; }
+        .side-card {
+            background: var(--glass-bg); backdrop-filter: blur(12px); border-radius: 16px; padding: 20px; border: var(--glass-border);
+        }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; font-size: 12px; margin-top: 10px;}
+        .cal-day { padding: 5px 0; border-radius: 6px; }
+        .cal-today { background: var(--primary); color: white; font-weight: bold; }
+        
+        /* 随手记 & 数据同步区 */
+        .memo-card { flex: 1; display: flex; flex-direction: column; }
+        .memo-area { flex: 1; width: 100%; background: transparent; border: none; resize: none; outline: none; margin-top: 10px; font-family: inherit; color: #444;}
+        
+        .sync-btns { margin-top: 10px; display: flex; gap: 10px; border-top: 1px dashed #ccc; padding-top: 10px;}
+        .sync-btn {
+            flex: 1; padding: 8px; border: none; border-radius: 8px; font-size: 12px; cursor: pointer; color: white; transition: 0.2s;
+        }
+        .btn-export { background: #0984e3; }
+        .btn-import { background: #00b894; }
+        .sync-btn:hover { opacity: 0.9; }
+
+        /* Stats */
+        .stats-section {
+            background: var(--glass-bg); backdrop-filter: blur(12px); border-radius: 20px; padding: 30px;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 50px; min-height: 500px;
+        }
+        .filter-group { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;}
+        .filter-btn {
+            padding: 6px 16px; border-radius: 20px; border: 1px solid var(--primary);
+            background: transparent; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: bold;
+        }
+        .filter-btn.active { background: var(--primary); color: white; }
+        .chart-container { width: 100%; height: 350px; }
+        
+        .history-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
+        .history-item { padding: 10px 0; border-bottom: 1px dashed #ddd; }
+        .history-time { font-size: 12px; color: #999; display: block; margin-bottom: 4px; }
+        .tag-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white; margin-right: 5px; vertical-align: middle; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <div class="app-title">📓 学习日志 Pro</div>
+        <div class="clock" id="clock">00:00</div>
+    </div>
+
+    <div class="workspace">
+        <div class="main-panel">
+            <div class="section-title">📅 今日计划</div>
+            <div class="input-wrapper">
+                <input type="text" id="taskInput" placeholder="输入目标，按回车添加..." onkeypress="handleEnter(event)">
+            </div>
+            <div class="task-list" id="taskList"></div>
+        </div>
+
+        <div class="sidebar">
+            <div class="side-card">
+                <div style="text-align:center; font-weight:bold; color:var(--primary); margin-bottom:10px;" id="calMonth">Calendar</div>
+                <div class="cal-grid" id="calGrid"></div>
+            </div>
+            <div class="side-card memo-card">
+                <div style="font-weight:bold; color:#555;">📝 随手记 & 数据同步</div>
+                <textarea class="memo-area" id="memoPad" placeholder="想法草稿..."></textarea>
+                
+                <div class="sync-btns">
+                    <button class="sync-btn btn-export" onclick="exportData()">📤 导出数据</button>
+                    <button class="sync-btn btn-import" onclick="importData()">📥 导入数据</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats-section">
+        <div>
+            <div class="section-title">📊 分布报表</div>
+            <div class="filter-group">
+                <button class="filter-btn active" onclick="setFilter('day')">今日</button>
+                <button class="filter-btn" onclick="setFilter('week')">本周</button>
+                <button class="filter-btn" onclick="setFilter('month')">本月</button>
+                <button class="filter-btn" onclick="setFilter('year')">全年</button>
+            </div>
+            <div id="chartMain" class="chart-container"></div>
+        </div>
+
+        <div class="stats-details">
+            <div class="stats-header" id="statsDetailTitle">详情记录</div>
+            <ul class="history-list" id="historyList">
+                <li style="color:#888;">暂无数据...</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- 1. 数据与工具 ---
+    let tasks = JSON.parse(localStorage.getItem('studyLogTasks')) || [];
+    let currentFilter = 'day';
+    let myChart = null;
+    const colorPalette = ['#6c5ce7', '#00b894', '#0984e3', '#e17055', '#fdcb6e', '#d63031', '#e84393', '#636e72', '#a29bfe', '#55efc4'];
+
+    // --- 2. 核心逻辑 ---
+    function save() {
+        localStorage.setItem('studyLogTasks', JSON.stringify(tasks));
+        renderTasks(); renderChart();
+    }
+
+    function renderTasks() {
+        const list = document.getElementById('taskList');
+        list.innerHTML = '';
+        const sortedTasks = [...tasks].sort((a, b) => b.id - a.id); // 倒序
+        
+        sortedTasks.forEach(task => {
+            const div = document.createElement('div');
+            div.className = `task-item ${task.done ? 'done' : ''}`;
+            div.innerHTML = `
+                <div class="task-header">
+                    <div class="checkbox" onclick="toggleTask(${task.id})"></div>
+                    <div class="task-title" onclick="toggleTask(${task.id})">${task.text}</div>
+                    <div class="delete-btn" onclick="deleteTask(${task.id})">✕</div>
+                </div>
+                <textarea class="task-note" placeholder="附录..." oninput="updateNote(${task.id}, this)" style="height: ${task.noteHeight || '30px'}">${task.note || ''}</textarea>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function handleEnter(e) {
+        if (e.key === 'Enter') {
+            const input = document.getElementById('taskInput');
+            const text = input.value.trim();
+            if (text) {
+                tasks.unshift({ id: Date.now(), text: text, note: '', done: false, createTime: Date.now() });
+                input.value = ''; save();
+            }
+        }
+    }
+
+    function toggleTask(id) {
+        const task = tasks.find(t => t.id === id);
+        if (task) { 
+            task.done = !task.done; 
+            task.done ? task.doneTime = Date.now() : delete task.doneTime;
+            save(); 
+        }
+    }
+
+    function deleteTask(id) {
+        if(confirm('删除此条目？')) { tasks = tasks.filter(t => t.id !== id); save(); }
+    }
+
+    function updateNote(id, textarea) {
+        const task = tasks.find(t => t.id === id);
+        if (task) {
+            task.note = textarea.value;
+            textarea.style.height = 'auto'; textarea.style.height = textarea.scrollHeight + 'px';
+            task.noteHeight = textarea.style.height;
+            localStorage.setItem('studyLogTasks', JSON.stringify(tasks));
+            renderChart();
+        }
+    }
+
+    // --- 3. 数据同步逻辑 (新功能) ---
+    function exportData() {
+        const data = {
+            tasks: tasks,
+            memo: document.getElementById('memoPad').value
+        };
+        const jsonStr = JSON.stringify(data);
+        navigator.clipboard.writeText(jsonStr).then(() => {
+            alert('✅ 数据已复制到剪贴板！\n请发送到手机/微信文件传输助手，然后在另一台设备上点击“导入”。');
+        });
+    }
+
+    function importData() {
+        const jsonStr = prompt("请粘贴导出的数据代码：");
+        if (jsonStr) {
+            try {
+                const data = JSON.parse(jsonStr);
+                if (data.tasks) {
+                    tasks = data.tasks;
+                    localStorage.setItem('studyLogTasks', JSON.stringify(tasks));
+                }
+                if (data.memo) {
+                    localStorage.setItem('studyLogMemo', data.memo);
+                    document.getElementById('memoPad').value = data.memo;
+                }
+                alert('✅ 数据导入成功！页面即将刷新。');
+                location.reload();
+            } catch (e) {
+                alert('❌ 数据格式错误，请确保复制了完整的代码。');
+            }
+        }
+    }
+
+    // --- 4. 统计报表 ---
+    function setFilter(type) {
+        currentFilter = type;
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        renderChart();
+    }
+
+    function isWithinRange(timestamp, rangeType) {
+        const date = new Date(timestamp);
+        const now = new Date();
+        if (rangeType === 'day') return date.toDateString() === now.toDateString();
+        if (rangeType === 'week') return Math.abs((now - date) / (24*60*60*1000)) <= 7;
+        if (rangeType === 'month') return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        if (rangeType === 'year') return date.getFullYear() === now.getFullYear();
+        return false;
+    }
+
+    function renderChart() {
+        if (!myChart) {
+            myChart = echarts.init(document.getElementById('chartMain'));
+            myChart.on('click', function (params) { showStatsDetail(params.name, params.color); });
+        }
+        
+        const filteredTasks = tasks.filter(t => t.done && isWithinRange(t.doneTime || t.createTime, currentFilter));
+        const dataMap = {};
+        filteredTasks.forEach(t => { dataMap[t.text] = (dataMap[t.text] || 0) + 1; });
+        
+        const chartData = Object.keys(dataMap).map(key => ({ value: dataMap[key], name: key }));
+
+        const option = {
+            tooltip: { trigger: 'item', formatter: '{b}: {c}项 ({d}%)' },
+            color: colorPalette,
+            series: [{
+                name: '任务分布', type: 'pie', radius: ['40%', '70%'],
+                itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+                label: { show: true, formatter: '{b}\n{d}%', fontSize: 13, fontWeight: 'bold' },
+                labelLine: { show: true, length: 10, length2: 10 },
+                data: chartData.length > 0 ? chartData : [{value: 0, name: '暂无数据', itemStyle:{color:'#eee'}}]
+            }]
+        };
+        myChart.setOption(option);
+        showStatsDetail(null);
+    }
+
+    function showStatsDetail(targetName, color) {
+        const list = document.getElementById('historyList');
+        const title = document.getElementById('statsDetailTitle');
+        list.innerHTML = '';
+        
+        let displayTasks = tasks.filter(t => t.done && isWithinRange(t.doneTime || t.createTime, currentFilter));
+        if (targetName && targetName !== '暂无数据') {
+            title.innerText = `🔍 ${targetName}`;
+            title.style.color = color || '#2d3436';
+            displayTasks = displayTasks.filter(t => t.text === targetName);
+        } else {
+            title.innerText = '📋 汇总记录'; title.style.color = '#2d3436';
+        }
+
+        if (displayTasks.length === 0) { list.innerHTML = '<li style="color:#ccc; padding:10px;">暂无记录</li>'; return; }
+        
+        displayTasks.sort((a, b) => (b.doneTime||0) - (a.doneTime||0));
+        displayTasks.forEach(task => {
+            const dateObj = new Date(task.doneTime || task.createTime);
+            const timeStr = `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${dateObj.getMinutes().toString().padStart(2,'0')}`;
+            const li = document.createElement('li');
+            li.className = 'history-item';
+            li.innerHTML = `<span class="history-time">${timeStr}</span><span style="font-weight:500;">${task.text}</span>${task.note ? `<br><span style="font-size:12px; color:#666; background:#f0f0f0; padding:2px 5px; border-radius:4px;">${task.note}</span>` : ''}`;
+            list.appendChild(li);
+        });
+    }
+
+    // --- 辅助功能 ---
+    setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString('en-GB'); }, 1000);
+    const memo = document.getElementById('memoPad');
+    memo.value = localStorage.getItem('studyLogMemo') || '';
+    memo.addEventListener('input', () => localStorage.setItem('studyLogMemo', memo.value));
+
+    function initCalendar() {
+        const date = new Date();
+        document.getElementById('calMonth').innerText = date.toLocaleString('default', { month: 'short', year: 'numeric' });
+        const firstDay = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+        const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+        const grid = document.getElementById('calGrid');
+        ['S','M','T','W','T','F','S'].forEach(d => grid.innerHTML += `<div style="color:#888; font-weight:bold;">${d}</div>`);
+        for(let i=0; i<firstDay; i++) grid.innerHTML += `<div></div>`;
+        for(let i=1; i<=daysInMonth; i++) {
+            const isToday = i === date.getDate();
+            grid.innerHTML += `<div class="cal-day ${isToday ? 'cal-today' : ''}">${i}</div>`;
+        }
+    }
+    window.onload = function() { renderTasks(); initCalendar(); renderChart(); window.onresize = () => myChart.resize(); };
+</script>
+</body>
+</html>
