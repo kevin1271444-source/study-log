@@ -184,22 +184,54 @@
 </div>
 
 <script>
-    // --- 1. 数据与工具 ---
-    let tasks = JSON.parse(localStorage.getItem('studyLogTasks')) || [];
+    // --- 1. 核心数据与配置 ---
+    let tasks = [];
     let currentFilter = 'day';
     let myChart = null;
     const colorPalette = ['#6c5ce7', '#00b894', '#0984e3', '#e17055', '#fdcb6e', '#d63031', '#e84393', '#636e72', '#a29bfe', '#55efc4'];
 
-    // --- 2. 核心逻辑 ---
+    // --- 2. 新增：与 Python 后端通信的魔法 ---
+    async function loadDataFromServer() {
+        try {
+            const response = await fetch('/api/data');
+            const data = await response.json();
+            tasks = data.tasks || [];
+            document.getElementById('memoPad').value = data.memo || '';
+            renderTasks();
+            renderChart();
+        } catch (error) {
+            console.error("加载数据失败:", error);
+        }
+    }
+
+    async function saveDataToServer() {
+        const payload = {
+            tasks: tasks,
+            memo: document.getElementById('memoPad').value
+        };
+        try {
+            await fetch('/api/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+        } catch (error) {
+            console.error("保存数据失败:", error);
+        }
+    }
+
+    // --- 3. 核心功能逻辑 ---
+    // 修改后的 save()，不仅渲染，还推送到服务器
     function save() {
-        localStorage.setItem('studyLogTasks', JSON.stringify(tasks));
-        renderTasks(); renderChart();
+        renderTasks(); 
+        renderChart();
+        saveDataToServer(); 
     }
 
     function renderTasks() {
         const list = document.getElementById('taskList');
         list.innerHTML = '';
-        const sortedTasks = [...tasks].sort((a, b) => b.id - a.id); // 倒序
+        const sortedTasks = [...tasks].sort((a, b) => b.id - a.id); 
         
         sortedTasks.forEach(task => {
             const div = document.createElement('div');
@@ -210,7 +242,7 @@
                     <div class="task-title" onclick="toggleTask(${task.id})">${task.text}</div>
                     <div class="delete-btn" onclick="deleteTask(${task.id})">✕</div>
                 </div>
-                <textarea class="task-note" placeholder="附录..." oninput="updateNote(${task.id}, this)" style="height: ${task.noteHeight || '30px'}">${task.note || ''}</textarea>
+                <textarea class="task-note" placeholder="附录..." onchange="updateNote(${task.id}, this)" style="height: ${task.noteHeight || '30px'}">${task.note || ''}</textarea>
             `;
             list.appendChild(div);
         });
@@ -237,7 +269,7 @@
     }
 
     function deleteTask(id) {
-        if(confirm('删除此条目？')) { tasks = tasks.filter(t => t.id !== id); save(); }
+        if(confirm('删除此条目？')) { tasks = filter(t => t.id !== id); save(); }
     }
 
     function updateNote(id, textarea) {
@@ -246,45 +278,13 @@
             task.note = textarea.value;
             textarea.style.height = 'auto'; textarea.style.height = textarea.scrollHeight + 'px';
             task.noteHeight = textarea.style.height;
-            localStorage.setItem('studyLogTasks', JSON.stringify(tasks));
-            renderChart();
+            saveDataToServer(); 
         }
     }
 
-    // --- 3. 数据同步逻辑 (新功能) ---
-    function exportData() {
-        const data = {
-            tasks: tasks,
-            memo: document.getElementById('memoPad').value
-        };
-        const jsonStr = JSON.stringify(data);
-        navigator.clipboard.writeText(jsonStr).then(() => {
-            alert('✅ 数据已复制到剪贴板！\n请发送到手机/微信文件传输助手，然后在另一台设备上点击“导入”。');
-        });
-    }
+    document.getElementById('memoPad').addEventListener('change', () => saveDataToServer());
 
-    function importData() {
-        const jsonStr = prompt("请粘贴导出的数据代码：");
-        if (jsonStr) {
-            try {
-                const data = JSON.parse(jsonStr);
-                if (data.tasks) {
-                    tasks = data.tasks;
-                    localStorage.setItem('studyLogTasks', JSON.stringify(tasks));
-                }
-                if (data.memo) {
-                    localStorage.setItem('studyLogMemo', data.memo);
-                    document.getElementById('memoPad').value = data.memo;
-                }
-                alert('✅ 数据导入成功！页面即将刷新。');
-                location.reload();
-            } catch (e) {
-                alert('❌ 数据格式错误，请确保复制了完整的代码。');
-            }
-        }
-    }
-
-    // --- 4. 统计报表 ---
+    // --- 4. 统计与日历逻辑 (保持不变) ---
     function setFilter(type) {
         currentFilter = type;
         document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
@@ -356,11 +356,7 @@
         });
     }
 
-    // --- 辅助功能 ---
     setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString('en-GB'); }, 1000);
-    const memo = document.getElementById('memoPad');
-    memo.value = localStorage.getItem('studyLogMemo') || '';
-    memo.addEventListener('input', () => localStorage.setItem('studyLogMemo', memo.value));
 
     function initCalendar() {
         const date = new Date();
@@ -375,7 +371,31 @@
             grid.innerHTML += `<div class="cal-day ${isToday ? 'cal-today' : ''}">${i}</div>`;
         }
     }
-    window.onload = function() { renderTasks(); initCalendar(); renderChart(); window.onresize = () => myChart.resize(); };
+    
+    // --- 5. 导入导出功能 (保持不变) ---
+    function exportData() {
+        const dataStr = JSON.stringify({ tasks, memo: document.getElementById('memoPad').value });
+        const encodedData = btoa(encodeURIComponent(dataStr));
+        navigator.clipboard.writeText(encodedData).then(() => alert("✅ 数据已复制到剪贴板！"));
+    }
+    
+    function importData() {
+        const encodedData = prompt("请粘贴导出的数据代码：");
+        if (encodedData) {
+            try {
+                const decodedData = JSON.parse(decodeURIComponent(atob(encodedData)));
+                if (decodedData.tasks) {
+                    tasks = decodedData.tasks;
+                    document.getElementById('memoPad').value = decodedData.memo || '';
+                    save(); // 触发保存到服务器
+                    alert("✅ 数据导入并同步成功！");
+                }
+            } catch (e) { alert("❌ 数据格式错误！"); }
+        }
+    }
+
+    // 初始化：启动时向服务器索要数据
+    window.onload = function() { initCalendar(); loadDataFromServer(); window.onresize = () => myChart.resize(); };
 </script>
 </body>
 </html>

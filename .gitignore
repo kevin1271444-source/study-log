@@ -1,0 +1,4 @@
+.env
+study_data.json
+studylog_env/
+__pycache__/
