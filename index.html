@@ -18,7 +18,7 @@
         body {
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
             margin: 0; padding: 0;
-            background-image: url('bg.jpg'); /* 请确保图片名为 bg.jpg */
+            background-image: url('bg.jpg'); 
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -44,7 +44,6 @@
             display: grid; grid-template-columns: 1fr 350px; gap: 30px;
             margin-bottom: 40px; min-height: 70vh; align-items: stretch;
         }
-        /* 移动端适配 */
         @media (max-width: 768px) {
             .workspace { grid-template-columns: 1fr; height: auto; }
             .stats-section { grid-template-columns: 1fr; }
@@ -56,7 +55,7 @@
             border-radius: 20px; padding: 30px; display: flex; flex-direction: column;
             box-shadow: 0 8px 30px rgba(0,0,0,0.1); box-sizing: border-box;
         }
-        .section-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; color: var(--text-main); }
+        .section-title { font-size: 20px; font-weight: bold; margin-bottom: 10px; color: var(--text-main); }
 
         .input-wrapper { position: relative; margin-bottom: 20px; }
         #taskInput {
@@ -64,6 +63,10 @@
             background: rgba(255,255,255,0.9); transition: 0.3s; box-shadow: 0 4px 10px rgba(0,0,0,0.05); box-sizing: border-box;
         }
         #taskInput:focus { outline: none; border-color: var(--primary); }
+        
+        /* 列表头部控制器 */
+        .list-header { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.5); padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; }
+        .list-title { font-size: 16px; font-weight: bold; color: var(--text-main); margin: 0; }
 
         .task-list { flex: 1; overflow-y: auto; padding-right: 5px; }
         .task-item {
@@ -124,7 +127,6 @@
         .history-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
         .history-item { padding: 10px 0; border-bottom: 1px dashed #ddd; }
         .history-time { font-size: 12px; color: #999; display: block; margin-bottom: 4px; }
-        .tag-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; color: white; margin-right: 5px; vertical-align: middle; }
 
     </style>
 </head>
@@ -140,8 +142,18 @@
         <div class="main-panel">
             <div class="section-title">📅 今日计划</div>
             <div class="input-wrapper">
-                <input type="text" id="taskInput" placeholder="输入目标，按回车添加..." onkeypress="handleEnter(event)">
+                <input type="text" id="taskInput" placeholder="直接输入目标，按回车添加..." onkeypress="handleEnter(event)">
             </div>
+            
+            <div class="list-header">
+                <div class="list-title">📋 任务列表</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label style="font-size: 13px; color: #666;">📅 回溯历史:</label>
+                    <input type="date" id="historyDate" onchange="renderTasks()" style="border:1px solid #ddd; border-radius:4px; padding:2px; font-family:inherit;">
+                    <button onclick="document.getElementById('historyDate').value=''; renderTasks()" style="border:none; background:var(--primary); color:white; border-radius:4px; cursor:pointer; padding:4px 10px; font-size:12px;">看今日</button>
+                </div>
+            </div>
+
             <div class="task-list" id="taskList"></div>
         </div>
 
@@ -175,7 +187,7 @@
         </div>
 
         <div class="stats-details">
-            <div class="stats-header" id="statsDetailTitle">详情记录</div>
+            <div class="stats-header" id="statsDetailTitle" style="font-size: 20px; font-weight: bold; margin-bottom: 20px;">详情记录</div>
             <ul class="history-list" id="historyList">
                 <li style="color:#888;">暂无数据...</li>
             </ul>
@@ -190,13 +202,47 @@
     let myChart = null;
     const colorPalette = ['#6c5ce7', '#00b894', '#0984e3', '#e17055', '#fdcb6e', '#d63031', '#e84393', '#636e72', '#a29bfe', '#55efc4'];
 
-    // --- 2. 新增：与 Python 后端通信的魔法 ---
+    // --- 2. 每日循环重置魔法 ---
+    function checkDailyResets() {
+        let changed = false;
+        const todayStr = new Date().toDateString();
+        const newTasks = [];
+        
+        tasks.forEach(t => {
+            if (t.isDaily && t.done && t.doneTime) {
+                const doneDateStr = new Date(t.doneTime).toDateString();
+                if (doneDateStr !== todayStr) {
+                    newTasks.push({
+                        id: Date.now() + Math.floor(Math.random() * 1000), 
+                        text: t.text,
+                        note: t.note, 
+                        done: false,
+                        createTime: Date.now(),
+                        deadline: t.deadline,
+                        isDaily: true
+                    });
+                    t.isDaily = false; 
+                    changed = true;
+                }
+            }
+        });
+        
+        if (newTasks.length > 0) {
+            tasks.unshift(...newTasks);
+            saveDataToServer(); 
+        }
+    }
+
+    // --- 3. 与后端通信 ---
     async function loadDataFromServer() {
         try {
             const response = await fetch('/api/data');
             const data = await response.json();
             tasks = data.tasks || [];
             document.getElementById('memoPad').value = data.memo || '';
+            
+            checkDailyResets(); 
+            
             renderTasks();
             renderChart();
         } catch (error) {
@@ -215,34 +261,74 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-        } catch (error) {
-            console.error("保存数据失败:", error);
-        }
+        } catch (error) {}
     }
 
-    // --- 3. 核心功能逻辑 ---
-    // 修改后的 save()，不仅渲染，还推送到服务器
     function save() {
         renderTasks(); 
         renderChart();
         saveDataToServer(); 
     }
 
+    // --- 4. 单条任务的属性更新 (新功能) ---
+    function updateTaskSettings(id, field, value) {
+        const task = tasks.find(t => t.id === id);
+        if (task) {
+            task[field] = value;
+            saveDataToServer(); // 仅默默保存到云端，不触发页面重绘，防止输入焦点丢失
+        }
+    }
+
+    // --- 5. 核心渲染与交互 ---
     function renderTasks() {
+        checkDailyResets(); 
+
         const list = document.getElementById('taskList');
         list.innerHTML = '';
-        const sortedTasks = [...tasks].sort((a, b) => b.id - a.id); 
         
+        const historyDateVal = document.getElementById('historyDate').value;
+        let displayTasks = [];
+
+        if (historyDateVal) {
+            const targetDate = new Date(historyDateVal).toDateString();
+            displayTasks = tasks.filter(t => t.done && t.doneTime && new Date(t.doneTime).toDateString() === targetDate);
+        } else {
+            const todayStr = new Date().toDateString();
+            displayTasks = tasks.filter(t => {
+                if (!t.done) return true; 
+                if (t.done && t.doneTime && new Date(t.doneTime).toDateString() === todayStr) return true; 
+                return false; 
+            });
+        }
+
+        const sortedTasks = [...displayTasks].sort((a, b) => b.id - a.id); 
+        
+        if (sortedTasks.length === 0) {
+            list.innerHTML = `<div style="text-align:center; padding: 20px; color:#aaa;">${historyDateVal ? '这一天没有完成的任务哦' : '列表很干净，来添加新任务吧！'}</div>`;
+            return;
+        }
+
         sortedTasks.forEach(task => {
             const div = document.createElement('div');
             div.className = `task-item ${task.done ? 'done' : ''}`;
+            
+            // 每一个任务卡片现在都自带它的专属配置项！
             div.innerHTML = `
                 <div class="task-header">
                     <div class="checkbox" onclick="toggleTask(${task.id})"></div>
                     <div class="task-title" onclick="toggleTask(${task.id})">${task.text}</div>
                     <div class="delete-btn" onclick="deleteTask(${task.id})">✕</div>
                 </div>
-                <textarea class="task-note" placeholder="附录..." onchange="updateNote(${task.id}, this)" style="height: ${task.noteHeight || '30px'}">${task.note || ''}</textarea>
+                <textarea class="task-note" placeholder="点击添加附录..." onchange="updateNote(${task.id}, this)" style="height: ${task.noteHeight || '30px'}">${task.note || ''}</textarea>
+                
+                <div style="padding-left: 38px; margin-top: 5px; display: flex; gap: 15px; font-size: 12px; color: #777;">
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                        🎯 截止: <input type="date" value="${task.deadline || ''}" onchange="updateTaskSettings(${task.id}, 'deadline', this.value)" style="border:1px solid #ddd; border-radius:4px; padding:1px 4px; font-family:inherit; font-size:11px; color:#555; background:rgba(255,255,255,0.6);">
+                    </label>
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                        <input type="checkbox" ${task.isDaily ? 'checked' : ''} onchange="updateTaskSettings(${task.id}, 'isDaily', this.checked)"> 🔁 每日循环
+                    </label>
+                </div>
             `;
             list.appendChild(div);
         });
@@ -253,8 +339,18 @@
             const input = document.getElementById('taskInput');
             const text = input.value.trim();
             if (text) {
-                tasks.unshift({ id: Date.now(), text: text, note: '', done: false, createTime: Date.now() });
-                input.value = ''; save();
+                // 新建任务时，默认没有截止日期，也不是每日循环
+                tasks.unshift({ 
+                    id: Date.now(), 
+                    text: text, 
+                    note: '', 
+                    done: false, 
+                    createTime: Date.now(),
+                    deadline: null,
+                    isDaily: false
+                });
+                input.value = ''; 
+                save();
             }
         }
     }
@@ -269,7 +365,7 @@
     }
 
     function deleteTask(id) {
-        if(confirm('删除此条目？')) { tasks = filter(t => t.id !== id); save(); }
+        if(confirm('删除此条目？')) { tasks = tasks.filter(t => t.id !== id); save(); }
     }
 
     function updateNote(id, textarea) {
@@ -284,7 +380,7 @@
 
     document.getElementById('memoPad').addEventListener('change', () => saveDataToServer());
 
-    // --- 4. 统计与日历逻辑 (保持不变) ---
+    // --- 6. 统计与日历逻辑 ---
     function setFilter(type) {
         currentFilter = type;
         document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
@@ -372,7 +468,7 @@
         }
     }
     
-    // --- 5. 导入导出功能 (保持不变) ---
+    // --- 7. 导入导出功能 ---
     function exportData() {
         const dataStr = JSON.stringify({ tasks, memo: document.getElementById('memoPad').value });
         const encodedData = btoa(encodeURIComponent(dataStr));
@@ -387,14 +483,13 @@
                 if (decodedData.tasks) {
                     tasks = decodedData.tasks;
                     document.getElementById('memoPad').value = decodedData.memo || '';
-                    save(); // 触发保存到服务器
+                    save(); 
                     alert("✅ 数据导入并同步成功！");
                 }
             } catch (e) { alert("❌ 数据格式错误！"); }
         }
     }
 
-    // 初始化：启动时向服务器索要数据
     window.onload = function() { initCalendar(); loadDataFromServer(); window.onresize = () => myChart.resize(); };
 </script>
 </body>
