@@ -64,7 +64,6 @@
         }
         #taskInput:focus { outline: none; border-color: var(--primary); }
         
-        /* 列表头部控制器 */
         .list-header { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.5); padding: 10px 15px; border-radius: 8px; margin-bottom: 10px; }
         .list-title { font-size: 16px; font-weight: bold; color: var(--text-main); margin: 0; }
 
@@ -99,7 +98,6 @@
         .cal-day { padding: 5px 0; border-radius: 6px; }
         .cal-today { background: var(--primary); color: white; font-weight: bold; }
         
-        /* 随手记 & 数据同步区 */
         .memo-card { flex: 1; display: flex; flex-direction: column; }
         .memo-area { flex: 1; width: 100%; background: transparent; border: none; resize: none; outline: none; margin-top: 10px; font-family: inherit; color: #444;}
         
@@ -116,12 +114,22 @@
             background: var(--glass-bg); backdrop-filter: blur(12px); border-radius: 20px; padding: 30px;
             display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 50px; min-height: 500px;
         }
-        .filter-group { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;}
+        .filter-group { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center;}
         .filter-btn {
             padding: 6px 16px; border-radius: 20px; border: 1px solid var(--primary);
-            background: transparent; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: bold;
+            background: transparent; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: bold; transition: 0.2s;
         }
         .filter-btn.active { background: var(--primary); color: white; }
+        
+        /* AI 按钮炫酷样式 */
+        .btn-ai {
+            background: linear-gradient(45deg, #a29bfe, #6c5ce7); color: white; border: none; 
+            margin-left: auto; box-shadow: 0 4px 15px rgba(108, 92, 231, 0.4);
+        }
+        .btn-ai:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108, 92, 231, 0.6); }
+        .btn-ai:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+
+        .ai-summary-text { font-size: 14px; color: #e84393; font-weight: bold; min-height: 20px; margin-bottom: 10px; }
         .chart-container { width: 100%; height: 350px; }
         
         .history-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
@@ -176,13 +184,18 @@
 
     <div class="stats-section">
         <div>
-            <div class="section-title">📊 分布报表</div>
+            <div class="section-title">📊 智能分布报表</div>
             <div class="filter-group">
                 <button class="filter-btn active" onclick="setFilter('day')">今日</button>
                 <button class="filter-btn" onclick="setFilter('week')">本周</button>
                 <button class="filter-btn" onclick="setFilter('month')">本月</button>
                 <button class="filter-btn" onclick="setFilter('year')">全年</button>
+                
+                <button class="filter-btn btn-ai" id="aiBtn" onclick="generateAISummary()">✨ AI 智能分析</button>
             </div>
+            
+            <div class="ai-summary-text" id="aiSummaryText"></div>
+            
             <div id="chartMain" class="chart-container"></div>
         </div>
 
@@ -202,7 +215,6 @@
     let myChart = null;
     const colorPalette = ['#6c5ce7', '#00b894', '#0984e3', '#e17055', '#fdcb6e', '#d63031', '#e84393', '#636e72', '#a29bfe', '#55efc4'];
 
-    // --- 2. 每日循环重置魔法 ---
     function checkDailyResets() {
         let changed = false;
         const todayStr = new Date().toDateString();
@@ -214,75 +226,42 @@
                 if (doneDateStr !== todayStr) {
                     newTasks.push({
                         id: Date.now() + Math.floor(Math.random() * 1000), 
-                        text: t.text,
-                        note: t.note, 
-                        done: false,
-                        createTime: Date.now(),
-                        deadline: t.deadline,
-                        isDaily: true
+                        text: t.text, note: t.note, done: false,
+                        createTime: Date.now(), deadline: t.deadline, isDaily: true
                     });
-                    t.isDaily = false; 
-                    changed = true;
+                    t.isDaily = false; changed = true;
                 }
             }
         });
         
-        if (newTasks.length > 0) {
-            tasks.unshift(...newTasks);
-            saveDataToServer(); 
-        }
+        if (newTasks.length > 0) { tasks.unshift(...newTasks); saveDataToServer(); }
     }
 
-    // --- 3. 与后端通信 ---
     async function loadDataFromServer() {
         try {
             const response = await fetch('/api/data');
             const data = await response.json();
             tasks = data.tasks || [];
             document.getElementById('memoPad').value = data.memo || '';
-            
             checkDailyResets(); 
-            
-            renderTasks();
-            renderChart();
-        } catch (error) {
-            console.error("加载数据失败:", error);
-        }
+            renderTasks(); renderChart();
+        } catch (error) { console.error("加载数据失败:", error); }
     }
 
     async function saveDataToServer() {
-        const payload = {
-            tasks: tasks,
-            memo: document.getElementById('memoPad').value
-        };
-        try {
-            await fetch('/api/data', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        } catch (error) {}
+        const payload = { tasks: tasks, memo: document.getElementById('memoPad').value };
+        try { await fetch('/api/data', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } catch (error) {}
     }
 
-    function save() {
-        renderTasks(); 
-        renderChart();
-        saveDataToServer(); 
-    }
+    function save() { renderTasks(); renderChart(); saveDataToServer(); }
 
-    // --- 4. 单条任务的属性更新 (新功能) ---
     function updateTaskSettings(id, field, value) {
         const task = tasks.find(t => t.id === id);
-        if (task) {
-            task[field] = value;
-            saveDataToServer(); // 仅默默保存到云端，不触发页面重绘，防止输入焦点丢失
-        }
+        if (task) { task[field] = value; saveDataToServer(); }
     }
 
-    // --- 5. 核心渲染与交互 ---
     function renderTasks() {
         checkDailyResets(); 
-
         const list = document.getElementById('taskList');
         list.innerHTML = '';
         
@@ -311,8 +290,6 @@
         sortedTasks.forEach(task => {
             const div = document.createElement('div');
             div.className = `task-item ${task.done ? 'done' : ''}`;
-            
-            // 每一个任务卡片现在都自带它的专属配置项！
             div.innerHTML = `
                 <div class="task-header">
                     <div class="checkbox" onclick="toggleTask(${task.id})"></div>
@@ -339,34 +316,18 @@
             const input = document.getElementById('taskInput');
             const text = input.value.trim();
             if (text) {
-                // 新建任务时，默认没有截止日期，也不是每日循环
-                tasks.unshift({ 
-                    id: Date.now(), 
-                    text: text, 
-                    note: '', 
-                    done: false, 
-                    createTime: Date.now(),
-                    deadline: null,
-                    isDaily: false
-                });
-                input.value = ''; 
-                save();
+                tasks.unshift({ id: Date.now(), text: text, note: '', done: false, createTime: Date.now(), deadline: null, isDaily: false });
+                input.value = ''; save();
             }
         }
     }
 
     function toggleTask(id) {
         const task = tasks.find(t => t.id === id);
-        if (task) { 
-            task.done = !task.done; 
-            task.done ? task.doneTime = Date.now() : delete task.doneTime;
-            save(); 
-        }
+        if (task) { task.done = !task.done; task.done ? task.doneTime = Date.now() : delete task.doneTime; save(); }
     }
 
-    function deleteTask(id) {
-        if(confirm('删除此条目？')) { tasks = tasks.filter(t => t.id !== id); save(); }
-    }
+    function deleteTask(id) { if(confirm('删除此条目？')) { tasks = tasks.filter(t => t.id !== id); save(); } }
 
     function updateNote(id, textarea) {
         const task = tasks.find(t => t.id === id);
@@ -383,8 +344,9 @@
     // --- 6. 统计与日历逻辑 ---
     function setFilter(type) {
         currentFilter = type;
-        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.filter-btn:not(.btn-ai)').forEach(btn => btn.classList.remove('active'));
         event.target.classList.add('active');
+        document.getElementById('aiSummaryText').innerText = ''; // 切换时间时清空 AI 鼓励语
         renderChart();
     }
 
@@ -398,6 +360,7 @@
         return false;
     }
 
+    // 老规矩的普通渲染：按任务名字统计
     function renderChart() {
         if (!myChart) {
             myChart = echarts.init(document.getElementById('chartMain'));
@@ -425,6 +388,69 @@
         showStatsDetail(null);
     }
 
+    // 🌟 新增的魔法核心：呼叫 AI 进行高维打击分类！
+    async function generateAISummary() {
+        const btn = document.getElementById('aiBtn');
+        const summaryDiv = document.getElementById('aiSummaryText');
+        
+        // 抓取当前时间段你做完的所有任务
+        const filteredTasks = tasks.filter(t => t.done && isWithinRange(t.doneTime || t.createTime, currentFilter));
+        
+        if (filteredTasks.length === 0) {
+            summaryDiv.innerText = "😅 当前时间段还没做完任何任务哦，AI 无米之炊~";
+            return;
+        }
+
+        // UI 变为思考中状态
+        btn.innerText = "🧠 深度思考中...";
+        btn.disabled = true;
+        summaryDiv.style.color = "#6c5ce7";
+        summaryDiv.innerText = "AI 正在理解你的任务并进行高维重构...";
+        if (myChart) myChart.showLoading({ text: 'AI 脑暴中...', color: '#6c5ce7', textColor: '#2d3436' });
+
+        try {
+            // 把任务通过后端发给火山引擎
+            const response = await fetch('/api/ai_summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tasks: filteredTasks })
+            });
+            const result = await response.json();
+
+            if (result.error) {
+                summaryDiv.style.color = "#d63031";
+                summaryDiv.innerText = "❌ " + result.error;
+                renderChart(); // 报错就退回普通视图
+            } else {
+                // 🎉 成功！重写饼图和文案
+                summaryDiv.style.color = "#e84393";
+                summaryDiv.innerText = "✨ AI 洞察: " + result.summary;
+                
+                const option = {
+                    tooltip: { trigger: 'item', formatter: '{b}: {c}项 ({d}%)' },
+                    color: colorPalette,
+                    series: [{
+                        name: '智能维度', type: 'pie', radius: ['40%', '70%'],
+                        itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+                        label: { show: true, formatter: '{b}\n{d}%', fontSize: 13, fontWeight: 'bold' },
+                        labelLine: { show: true, length: 10, length2: 10 },
+                        data: result.categories.length > 0 ? result.categories : [{value: 0, name: '分类失败', itemStyle:{color:'#eee'}}]
+                    }]
+                };
+                myChart.setOption(option);
+            }
+        } catch (error) {
+            summaryDiv.style.color = "#d63031";
+            summaryDiv.innerText = "❌ 连接后端失败，请检查网络。";
+            renderChart();
+        } finally {
+            // 恢复按钮状态
+            btn.innerText = "✨ AI 智能分析";
+            btn.disabled = false;
+            if (myChart) myChart.hideLoading();
+        }
+    }
+
     function showStatsDetail(targetName, color) {
         const list = document.getElementById('historyList');
         const title = document.getElementById('statsDetailTitle');
@@ -434,7 +460,7 @@
         if (targetName && targetName !== '暂无数据') {
             title.innerText = `🔍 ${targetName}`;
             title.style.color = color || '#2d3436';
-            displayTasks = displayTasks.filter(t => t.text === targetName);
+            // 注意：因为加入了 AI 分类，这里不再做精准过滤，展示全部清单供查看
         } else {
             title.innerText = '📋 汇总记录'; title.style.color = '#2d3436';
         }
@@ -468,7 +494,6 @@
         }
     }
     
-    // --- 7. 导入导出功能 ---
     function exportData() {
         const dataStr = JSON.stringify({ tasks, memo: document.getElementById('memoPad').value });
         const encodedData = btoa(encodeURIComponent(dataStr));
